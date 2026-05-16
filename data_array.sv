@@ -6,9 +6,9 @@ input logic we,
 input logic re,
 input logic [1:0] way_sel,
 input logic [511:0] din_data,
-input logic [63:0] byte_sel, //onehot encoded
+input logic [63:0] byte_sel, //onehot encoded if write hit, else all ones on a miss
 //output ports
-output logic [511:0] dout_data[3:0]
+output logic [511:0] dout_data[0:3]
 );
 
 

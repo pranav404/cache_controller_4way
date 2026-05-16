@@ -1,5 +1,6 @@
 module plru_way_selector(
     input logic clk;
+    input logic plru_we,
     input logic [5:0] v_index;
     input logic [5:0] u_index;
     input logic [1:0] u_way;
@@ -34,6 +35,7 @@ end
 
 always@(posedge clk) begin
 
+    if(plru_we) begin
     case(u_way)
         2'b00: begin
             plru_tree[u_index] <= {1'b1,1'b1,plru_tree[u_index][0]};
@@ -51,6 +53,7 @@ always@(posedge clk) begin
             plru_tree[u_index] <= {1'b1,1'b1,plru_tree[u_index][0]};
         end
     endcase
+    end
 end
 
 

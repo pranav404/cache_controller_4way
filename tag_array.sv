@@ -9,9 +9,9 @@ input logic [19:0] din_tag,
 input logic din_valid,
 input logic din_dirty,
 //output ports
-output logic [19:0] dout_tag[3:0],
-output logic dout_valid[3:0],
-output logic dout_dirty[3:0]
+output logic [19:0] dout_tag[0:3],
+output logic dout_valid[0:3],
+output logic dout_dirty[0:3]
 );
 
 
