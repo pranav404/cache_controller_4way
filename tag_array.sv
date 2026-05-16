@@ -28,19 +28,14 @@ tag_mem_array tag_mem_banks [0:63][0:3];
 //Sequential Write to tag_bank
 always_ff @(posedge clk) begin
 	if(we) begin
-		tag_mem_banks[w_index][way_sel] <= '{din_tag,din_valid,din_dirty};
+		tag_mem_banks[w_index][way_sel] <= {din_tag,din_valid,din_dirty};
 	end
 end
 
 //combinational_read to tag_bank
 always_comb begin
 	for(int i = 0; i < 4; i = i+1) begin
-		if((re)&&((we)&&(r_index == w_index))) begin
-			dout_tag[i] = din_tag;
-			dout_valid[i] = din_valid;
-			dout_dirty[i] = din_dirty;
-		end
-		else if(re) begin
+		if(re) begin
 			dout_tag[i] = tag_mem_banks[r_index][i].tag;
 			dout_valid[i] = tag_mem_banks[r_index][i].valid;
 			dout_dirty[i] = tag_mem_banks[r_index][i].dirty;
