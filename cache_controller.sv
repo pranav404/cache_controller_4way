@@ -118,14 +118,17 @@ plru_way_selector u_plru_way_selector (
 
 
 
-//signals for read FSM
-logic [2:0] read_state_FSM;
-localparam IDLE_COMPARE - 3'b000;
-localparam MISS1 = 3'b001;
-localparam MISS2 = 3'b010;
+logic [2:0] read_fsm, write_fsm;
+
+
+localparam IDLE_READ = 3'b000;
+localparam MISS1_READ = 3'b001;
+localparam MISS2_READ = 3'b010;
 localparam WRITE_BACK = 3'b011;
 localparam MEM_ACC = 3'b100;
-localparam ERROR = 3'b111;
+localparam TAG_MATCH = 3'b101;
+localparam WRITE_TO_CACHE = 3'b110;
+
 
 logic internal_stall;
 logic external_stall;
@@ -135,110 +138,162 @@ assign external_stall = cpu_stall_cache | mem_stall_cache;
 
 
 
-logic [31:0] miss_address;
-logic [1:0] victim_way;
-logic miss_index_valids [0:3];
-logic miss_index_dirty [0:3];
-logic [19:0] miss_index_tags[0:3];
-logic [511:0] miss_index_data [0:3];
+logic [31:0] read_miss_address, write_address;
+logic read_miss_valids[0:3];
+logic read_miss_dirty[0:3];
+
+logic read_miss, write_miss;
+
+logic tag_busy, data_busy, comp_busy;
+
+//combinational block for tag_array
+always_comb begin
+    if(read_fsm == IDLE_READ && write_fsm != TAG_MATCH && re) begin
+        tag_busy = 1'b1;
+        tag_r_index = cpu_addr_read[11:6];
+        tag_re = 1'b1;
+
+    end
+    else if(write_fsm == TAG_MATCH && we && !tag_busy) begin
+        tag_r_index = write_address[11:6];
+        tag_re = 1'b1;
+    end
+    else begin
+        tag_busy = 1'b0;
+        tag_r_index = 'b0;
+        tag_re = 1'b0;
+    end
+end
+
+
+//combinational block for data_array
+always_comb begin
+    if(read_fsm == IDLE_READ && re) begin
+        data_busy = 1'b1;
+        data_r_index = cpu_addr_read[11:6];
+        data_re = 1'b1;
+    end
+    else begin
+        data_busy = 1'b0;
+        data_r_index = 'b0;
+        data_re = 1'b0;
+    end
+end
+
+
+//combinational control for comparator
+always_comb begin
+    if(read_fsm == IDLE_READ && write_fsm != TAG_MATCH && re) begin
+        comp_busy = 1'b1;
+        comp_data_in = dout_data;
+        comp_in_tag = tag_out;
+        comp_cmp_tag = cpu_addr_read[31:12];
+        comp_valid_in = tag_valid_out;
+        comp_dirty_in = tag_dirty_out;
+        read_miss = !cache_hit;
+        cpu_data_read = comp_hit_data;
+    end
+    else if(write_fsm == TAG_MATCH && we && !comp_busy) begin
+        comp_cmp_tag = write_address[31:12];
+        comp_data_in[0] = 'b0;
+        comp_data_in[1] = 'b0;
+        comp_data_in[2] = 'b0;
+        comp_data_in[3] = 'b0;
+        comp_in_tag = tag_out;
+        comp_valid_in = tag_valid_out;
+        comp_dirty_in = tag_dirty_out;
+        write_miss = !cache_hit;
+    end
+    else begin
+        comp_busy = 1'b0;
+        comp_data_in[0] = 'b0;
+        comp_data_in[1] = 'b0;
+        comp_data_in[2] = 'b0;
+        comp_data_in[3] = 'b0;
+        comp_cmp_tag = 'b0;
+        comp_in_tag[0] = 'b0;
+        comp_in_tag[1] = 'b0;
+        comp_in_tag[2] = 'b0;
+        comp_in_tag[3] = 'b0;
+        comp_dirty_in[0] = 'b0;
+        comp_dirty_in[1] = 'b0;
+        comp_dirty_in[2] = 'b0;
+        comp_dirty_in[3] = 'b0;
+        comp_valid_in[0] = 'b0;
+        comp_valid_in[1] = 'b0;
+        comp_valid_in[2] = 'b0;
+        comp_valid_in[3] = 'b0;
+    end
+end
 
 
 
-always@(posedge clk or negedge rst_n) begin
+
+//combinational block for plru
+always_comb begin
+end
+
+
+
+        
+
+
+//read_fsm
+always_ff@(posedge clk or negedge rst_n) begin
     if(!rst_n) begin
-        read_state_FSM <= IDLE_COMPARE;
+        read_fsm <= IDLE_READ;
     end
     else begin
         if(external_stall) begin
-            read_state_FSM <= read_state_FSM;
+            read_fsm <= read_fsm;
         end
         else begin
-            case(read_state_FSM)
-            IDLE_COMPARE: begin
-                if(!cache_hit) begin
-                    read_state_FSM <= MISS1;
-                    //setting signals for the plru selector
-                    miss_address <= cpu_addr_read;
-                    miss_index_dirty <= tag_dirty_out;
-                    miss_index_valids <= tag_valid_out;
-                    miss_index_tags <= tag_out;
-                    miss_index_data <= dout_data;
-                    
+            case(read_fsm)
+            IDLE_READ: begin
+                if(!read_miss) begin
+                    internal_stall <= 1'b1;
+                    read_miss_address <= cpu_addr_read;
+                    read_miss_valids <= tag_valid_out;
+                    read_miss_dirty <= tag_dirty_out;
+                    read_fsm <= MISS1_READ;
                 end
                 else begin
-                    read_state_FSM <= IDLE_COMPARE;
+                    read_fsm <= IDLE_READ;
                 end
             end
-            MISS1: begin
-                victim_way <= v_way;
-                read_state_FSM <= MISS2
+            MISS1_READ: begin
+                read_fsm <= MISS2_READ;
             end
-            MISS2: begin
-                if(miss_index_dirty[victim_way] && miss_index_valids[victim_way]) begin
-                    //victim block dirty, next state => WRITEBACK
-                    read_state_FSM <= WRITE_BACK;
-                end
-                else begin
-                    //read_state_FSM can move directly to mem access
-                    read_state_FSM <= MEM_ACC;
-                end
+            MISS2_READ: begin
+                read_fsm <= MISS2_READ;
             end
             WRITE_BACK: begin
-                if(!mem_we) begin
-                    mem_we<= 1'b1;
-                    mem_addr_write <= {miss_index_tags[victim_way],miss_address[11:6],6'b0};
-                    mem_data_write <= miss_index_data[victim_way];
-                    read_state_FSM <= WRITE_BACK;
-                end
-                else if(mem_ack) begin
-                    read_state_FSM <= MEM_ACC;
-                    mem_we <= 1'b0;
-                end
-                else begin
-                    read_state_FSM <= WRITE_BACK;
-                end
+                read_fsm <= MEM_ACC;
             end
             MEM_ACC: begin
-                if(!mem_re && !mem_ack && !(data_we || tag_we || plru_we)) begin
-                    mem_re <= 1'b1;
-                    mem_addr_read <= miss_address;
-                    read_state_FSM <= MEM_ACC;
-                end
-                else if(mem_ack) begin
-                    mem_re <= 1'b0;
-                    //updating data array
-                    data_we <= 1'b1;
-                    data_way_sel <= victim_way;
-                    byte_sel <= 'b1;
-                    din_data <= mem_data_read;
-                    data_w_index <= miss_address[11:6];
-                    //updating tag array
-                    tag_we <= 1'b1;
-                    tag_way_sel <= victim_way;
-                    tag_din <= miss_address[31:12];
-                    tag_valid <= 1'b1;
-                    tag_dirty <= 1'b1;
-                    tag_w_index <= miss_address[11:6];
-                    //updating plru table
-                    plru_we <= 1'b1;
-                    plru_u_index <= miss_address[11:6];
-                    plru_u_way <= victim_way;
-                    read_state_FSM <= MEM_ACC;
-                end
-                else if(data_we || tag_we || plru_we) begin
-                    data_we <= 1'b0;
-                    tag_we <= 1'b0;
-                    plru_we <= 1'b0;
-                    read_state_FSM <= IDLE_COMPARE;
-                end
+                read_fsm <= IDLE_READ;
             end
             default: begin
-                read_state_FSM <= IDLE_COMPARE;
+                read_fsm <= IDLE_READ;
             end
             endcase
         end
     end
 end
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
                     
