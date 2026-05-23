@@ -16,11 +16,11 @@ module cache_controller(
     output logic [31:0] mem_addr_write,
     output logic mem_re,
     output logic mem_we,
-    input logic mem_ack;
+    input logic mem_ack,
     input logic [511:0] mem_data_read,
-    output logic [511:0] mem_data_write
+    output logic [511:0] mem_data_write,
     output logic cache_stall_mem,
-    input logic mem_stall_cache,
+    input logic mem_stall_cache
 );
 
 
@@ -145,6 +145,7 @@ logic read_miss_valids [0:3];
 logic read_miss_dirty [0:3];
 logic [1:0] read_miss_victim;
 logic [511:0] read_miss_data[0:3];
+logic [511:0] write_data_cache;
 always@(posedge clk or negedge rst_n) begin
     
     if(!rst_n) begin
@@ -170,12 +171,12 @@ always@(posedge clk or negedge rst_n) begin
             end
         end
         MISS1: begin
-            read_miss_victim_way <= plru_v_way;
+            read_miss_victim <= plru_v_way;
             read_fsm <= MISS2;
         end
         MISS2: begin
             
-            if(read_miss_valids[read_miss_victim_way] && read_miss_dirty[read_miss_victim_way]) begin
+            if(read_miss_valids[read_miss_victim] && read_miss_dirty[read_miss_victim]) begin
                 read_fsm <= WRITE_BACK;
 
             end
@@ -186,8 +187,8 @@ always@(posedge clk or negedge rst_n) begin
         WRITE_BACK: begin
             if(!mem_we) begin
                 mem_we <= 1'b1;
-                mem_addr_write <= {read_miss_tags[read_miss_victim_way],read_miss_address[11:6],6'b0};
-                mem_data_write <= read_miss_data[read_miss_victim_way];
+                mem_addr_write <= {read_miss_tags[read_miss_victim],read_miss_address[11:6],6'b0};
+                mem_data_write <= read_miss_data[read_miss_victim];
                 read_fsm <= WRITE_BACK;
             end
             else if(mem_ack) begin
@@ -198,15 +199,102 @@ always@(posedge clk or negedge rst_n) begin
         MEM_ACC: begin
             if(!mem_re) begin
                 mem_re <= 1'b1;
-                m
+                mem_addr_read <= read_miss_address;
+                read_fsm <= MEM_ACC;
+            end
+            else if (mem_ack) begin
+                mem_re <= 1'b0;
+                write_data_cache <= mem_data_read;
+                read_fsm <= WRITE_CACHE;
+            end
+            else begin
+                read_fsm <= MEM_ACC;
             end
         end
+        WRITE_CACHE: begin
+            read_fsm <= IDLE_COMPARE;
+            //get stall signal low
+
+        end
+        default: begin
+            
+            read_fsm <= IDLE_COMPARE;
+        end
+        endcase
+    end
+end
+
+
+//always combinational blocks to control tag array
+always_comb begin : tag_array_control
+    if(read_fsm == IDLE_COMPARE && re) begin
+        tag_re = 1'b1;
+        tag_r_index = cpu_addr_read[11:6];
+
+    end
+    else begin
+        tag_re = 1'b0;
+        tag_r_index = 'b0;
+    end
+end
+
+
+//always block for data array control
+always_comb begin : Data_array
+    if(read_fsm == IDLE_COMPARE && re) begin
+        data_re = 1'b1;
+        data_r_index = cpu_addr_read[11:6];
+    end
+    else begin
+        data_re = 1'b0;
+        data_r_index = 'b0;
+    end
+end
+
+
+//always combinational block for comparator control
+always_comb begin : comparator_control
+    if(read_fsm == IDLE_COMPARE && re) begin
+        comp_cmp_tag = cpu_addr_read[31:12];
+        comp_in_tag = tag_out;
+        comp_valid_in = tag_valid_out;
+        comp_dirty_in = tag_dirty_out;
+        comp_data_in = dout_data;
+
+    end
+    else begin
+        comp_cmp_tag = 'b0;
+        comp_in_tag[0] = 'b0;
+        comp_in_tag[1] = 'b0;
+        comp_in_tag[2] = 'b0;
+        comp_in_tag[3] = 'b0;
+        comp_dirty_in[0] = 'b0;
+        comp_dirty_in[1] = 'b0;
+        comp_dirty_in[2] = 'b0;
+        comp_dirty_in[3] = 'b0;
+        comp_valid_in[0] = 'b0;
+        comp_valid_in[1] = 'b0;
+        comp_valid_in[2] = 'b0;
+        comp_valid_in[3] = 'b0;
+        comp_data_in[0] = 'b0;
+        comp_data_in[1] = 'b0;
+        comp_data_in[2] = 'b0;
+        comp_data_in[3] = 'b0;
     end
 end
 
 
 
+//always combinational block for plru control
 
+always_comb begin : plru_control
+    if(read_fsm == MISS1) begin
+        plru_v_index = read_miss_address[11:6];
+    end
+    else begin
+        plru_v_index = 'b0;
+    end
+end
 
 
 
