@@ -31,7 +31,7 @@ end
 always_comb begin
 	for(i = 0; i < 4; i = i+1) begin
 		if(re) begin
-			dout_data[i] = data_mem_banks[i];
+			dout_data[i] = data_mem_banks[i][r_index];
 		end
 		else begin
 			dout_data[i] = 'b0;

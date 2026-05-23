@@ -3,7 +3,10 @@
 module tb_tag_array;
 
     // 1. Interface Signals
-    bit clk;
+    logic [19:0] dout_tag[3:0];
+    logic dout_valid[3:0];
+    logic dout_dirty[3:0];
+    logic clk;
     logic [5:0] w_index;
     logic [5:0] r_index;
     logic we;
@@ -14,9 +17,7 @@ module tb_tag_array;
     logic din_dirty;
 
     // Outputs from the DUT
-    logic [19:0] dout_tag[3:0];
-    logic dout_valid[3:0];
-    logic dout_dirty[3:0];
+    
 
     // 2. Instantiate the Device Under Test (DUT)
     tag_array dut (
@@ -33,16 +34,22 @@ module tb_tag_array;
         .dout_valid(dout_valid),
         .dout_dirty(dout_dirty)
     );
+    initial begin
+        
+        #10 clk = 'b0;
 
+    end
     // 3. Clock Generation (50MHz / 20ns period)
     always@(*) begin
         #10 clk <= ~clk;
     end
 
-    // 4. Environment Waveform Dumping
     initial begin
-        $dumpfile("dump.vcd"); // Creates the waveform trace file
-        $dumpvars(0, tag_array_tb); // Dumps all signals in this testbench and below
+        $dumpfile("waveform.vcd");
+        $dumpvars(1,tb_tag_array);
+        $dumpvars(1,tb_tag_array.dut);
+        
+
     end
 
     // 5. Basic Stimulus: Straight Writes and Reads on Overlapping Locations
