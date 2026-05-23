@@ -298,7 +298,86 @@ end
 
 
 
+//sequential write fsm logic control
+logic [511:0] cache_write_data;
+logic [31:0] cache_write_address;
+logic [19:0] write_miss_victim_tags[0:3];
+logic [511:0] write_miss_victim_data[0:3];
+logic write_miss_victim_valids[0:3];
+logic write_miss_victim_dirty[0:3];
+logic [1:0] write_miss_victim_way;
 
+always_ff @(posedge clk or negedge rst_n) begin
+    
+    if(!rst_n) begin
+        write_fsm <= TAG_MATCH;
+    end
+    else begin
+        case(write_fsm)
+        TAG_MATCH: begin
+            if(we) begin
+                cache_write_data <= cpu_data_write;
+                cache_write_address <= cpu_addr_write;
+                if(cache_hit) begin
+                    write_fsm <= WRITE_CACHE;
+                end
+                else begin
+                    write_fsm <= MISS1;
+                    write_miss_victim_tags <= tag_out;
+                    write_miss_victim_data <= dout_data;
+                    write_miss_victim_valids <= tag_valid_out;
+                    write_miss_victim_dirty <= tag_dirty_out;
+                end
+            end
+            else begin
+                write_fsm <= TAG_MATCH;
+            end
+        end
+        WRITE_CACHE: begin
+            write_fsm <= TAG_MATCH;
+        end
+        MISS1: begin
+            write_miss_victim_way <= plru_v_way;
+            write_fsm <= MISS2;
+        end
+        MISS2: begin
+            if(write_miss_victim_dirty[write_miss_victim_way] && write_miss_victim_valids[write_miss_victim_way]) begin
+                write_fsm <= WRITE_BACK;
+            end
+            else begin
+                write_fsm <= MEM_ACC;
+            end
+        end
+        WRITE_BACK: begin
+            if(!mem_we) begin
+                mem_we <= 1'b1;
+                mem_addr_write <= {write_miss_victim_tags[write_miss_victim_way],cache_write_address[11:6],6'b0};
+                mem_data_write <= write_miss_victim_data[write_miss_victim_way];
+                write_fsm <= WRITE_BACK;
+            end
+            else if(mem_ack) begin
+                mem_we <= 1'b0;
+                write_fsm <= MEM_ACC;
+            end
+        end
+        MEM_ACC: begin
+            if(!mem_re) begin
+                mem_re <= 1'b1;
+                mem_addr_read <= cache_write_address;
+                write_fsm <= MEM_ACC;
+            end
+            else if(mem_ack) begin
+                mem_re <= 1'b0;
+                write_fsm <= WRITE_CACHE;
+            end
+        end
+        default: begin
+            write_fsm <= TAG_MATCH;
+        end
+        endcase
+    end
+
+end
 
 
 
