@@ -6,6 +6,7 @@ module cache_controller(
     input logic re,
     input logic we,
     input logic [31:0] cpu_addr_write,
+    input logic [63:0] write_byte_sel,
     input logic [31:0] cpu_addr_read,
     input logic [511:0] cpu_data_write,
     input logic cpu_stall_cache,
@@ -84,6 +85,7 @@ logic comp_valid_in[0:3];
 logic comp_dirty_in[0:3];
 logic cache_hit;
 logic [511:0] comp_hit_data;
+logic [1:0] comp_matched_way;
 
 
 // Module instantiation for the comparator selector
@@ -94,6 +96,7 @@ comparator_selector u_comparator_selector (
     .valid_in   (comp_valid_in),
     .dirty_in   (comp_dirty_in),
     .cache_hit  (cache_hit),
+    .matched_way (comp_matched_way),
     .hit_data   (comp_hit_data)
 );
 
@@ -145,7 +148,21 @@ logic read_miss_valids [0:3];
 logic read_miss_dirty [0:3];
 logic [1:0] read_miss_victim;
 logic [511:0] read_miss_data[0:3];
-logic [511:0] write_data_cache;
+logic [511:0] read_miss_mem_data;
+
+//signals for write_fsm
+logic [511:0] cache_write_data;
+logic [511:0] mem_write_cache_data;
+logic [31:0] cache_write_address;
+logic [19:0] write_miss_victim_tags[0:3];
+logic [511:0] write_miss_victim_data[0:3];
+logic write_miss_victim_valids[0:3];
+logic write_miss_victim_dirty[0:3];
+logic [1:0] write_miss_victim_way;
+logic [1:0] matched_way;
+logic [63:0] cpu_write_byte_sel;
+logic write_miss_stall;
+
 always@(posedge clk or negedge rst_n) begin
     
     if(!rst_n) begin
@@ -157,14 +174,19 @@ always@(posedge clk or negedge rst_n) begin
         case(read_fsm)
         IDLE_COMPARE: begin
             
-            if(!cache_hit && re) begin
+            if(re) begin
+                if(!cache_hit) begin
                 
-                read_miss_address <= cpu_addr_read; //MEM ACC
-                read_miss_tags <= tag_out; //WRITE BACK or MEM ACC
-                read_miss_dirty <= tag_dirty_out;
-                read_miss_valids <= tag_valid_out;
-                read_fsm <= MISS1;
+                    read_miss_address <= cpu_addr_read; //MEM ACC
+                    read_miss_tags <= tag_out; //WRITE BACK or MEM ACC
+                    read_miss_dirty <= tag_dirty_out;
+                    read_miss_valids <= tag_valid_out;
+                    read_fsm <= MISS1;
 
+                end
+                else begin
+                    read_fsm <= IDLE_COMPARE;
+                end
             end
             else begin
                 read_fsm <= IDLE_COMPARE;
@@ -204,7 +226,7 @@ always@(posedge clk or negedge rst_n) begin
             end
             else if (mem_ack) begin
                 mem_re <= 1'b0;
-                write_data_cache <= mem_data_read;
+                read_miss_mem_data <= mem_data_read;
                 read_fsm <= WRITE_CACHE;
             end
             else begin
@@ -213,7 +235,7 @@ always@(posedge clk or negedge rst_n) begin
         end
         WRITE_CACHE: begin
             read_fsm <= IDLE_COMPARE;
-            //get stall signal low
+
 
         end
         default: begin
@@ -232,6 +254,10 @@ always_comb begin : tag_array_control
         tag_r_index = cpu_addr_read[11:6];
 
     end
+    else if(write_fsm == TAG_MATCH && we) begin
+        tag_re = 1'b1;
+        tag_r_index = cpu_addr_write[11:6];
+    end
     else begin
         tag_re = 1'b0;
         tag_r_index = 'b0;
@@ -245,7 +271,33 @@ always_comb begin : Data_array
         data_re = 1'b1;
         data_r_index = cpu_addr_read[11:6];
     end
+    else if(read_fsm == WRITE_CACHE) begin
+        data_we = 1'b1;
+        data_way_sel = read_miss_victim;
+        data_w_index = read_miss_address[11:6];
+        byte_sel = 'b1;
+        din_data = read_miss_mem_data;
+        cpu_data_read = read_miss_mem_data;
+    end
+    else if(write_fsm == WRITE_CACHE) begin
+        data_we = 1'b1;
+        data_way_sel = matched_way;
+        data_w_index = cache_write_address[11:6];
+        if(write_miss_stall) begin
+            byte_sel = 'b1; 
+            din_data = mem_write_cache_data;
+        end
+        else begin
+            byte_sel = cpu_write_byte_sel;
+            din_data = cache_write_data;
+        end
+    end
     else begin
+        data_we = 1'b0;
+        data_way_sel = 'b0;
+        data_w_index = 1'b0;
+        byte_sel = 'b0;
+        din_data = 'b0;
         data_re = 1'b0;
         data_r_index = 'b0;
     end
@@ -261,6 +313,16 @@ always_comb begin : comparator_control
         comp_dirty_in = tag_dirty_out;
         comp_data_in = dout_data;
 
+    end
+    else if(write_fsm == TAG_MATCH && we) begin
+        comp_cmp_tag = cpu_addr_write[31:12];
+        comp_in_tag = tag_out;
+        comp_valid_in = tag_valid_out;
+        comp_dirty_in = tag_dirty_out;
+        comp_data_in[0] = 'b0;
+        comp_data_in[1] = 'b0;
+        comp_data_in[2] = 'b0;
+        comp_data_in[3] = 'b0;
     end
     else begin
         comp_cmp_tag = 'b0;
@@ -291,6 +353,9 @@ always_comb begin : plru_control
     if(read_fsm == MISS1) begin
         plru_v_index = read_miss_address[11:6];
     end
+    else if(write_fsm == MISS1) begin
+        plru_v_index = cache_write_address[11:6];
+    end
     else begin
         plru_v_index = 'b0;
     end
@@ -299,13 +364,6 @@ end
 
 
 //sequential write fsm logic control
-logic [511:0] cache_write_data;
-logic [31:0] cache_write_address;
-logic [19:0] write_miss_victim_tags[0:3];
-logic [511:0] write_miss_victim_data[0:3];
-logic write_miss_victim_valids[0:3];
-logic write_miss_victim_dirty[0:3];
-logic [1:0] write_miss_victim_way;
 
 always_ff @(posedge clk or negedge rst_n) begin
     
@@ -318,8 +376,11 @@ always_ff @(posedge clk or negedge rst_n) begin
             if(we) begin
                 cache_write_data <= cpu_data_write;
                 cache_write_address <= cpu_addr_write;
+                cpu_write_byte_sel <= write_byte_sel;
                 if(cache_hit) begin
                     write_fsm <= WRITE_CACHE;
+                    matched_way <= comp_matched_way;
+                    write_miss_stall <= 1'b0;
                 end
                 else begin
                     write_fsm <= MISS1;
@@ -327,6 +388,7 @@ always_ff @(posedge clk or negedge rst_n) begin
                     write_miss_victim_data <= dout_data;
                     write_miss_victim_valids <= tag_valid_out;
                     write_miss_victim_dirty <= tag_dirty_out;
+                    write_miss_stall <= 1'b1;
                 end
             end
             else begin
@@ -334,7 +396,14 @@ always_ff @(posedge clk or negedge rst_n) begin
             end
         end
         WRITE_CACHE: begin
-            write_fsm <= TAG_MATCH;
+            if(write_miss_stall) begin
+                write_miss_stall <= 1'b0;
+                write_fsm <= WRITE_CACHE;
+            end
+            else begin
+                write_fsm <= TAG_MATCH;
+            end
+            
         end
         MISS1: begin
             write_miss_victim_way <= plru_v_way;
@@ -369,6 +438,7 @@ always_ff @(posedge clk or negedge rst_n) begin
             else if(mem_ack) begin
                 mem_re <= 1'b0;
                 write_fsm <= WRITE_CACHE;
+                mem_write_cache_data <= mem_data_read;
             end
         end
         default: begin

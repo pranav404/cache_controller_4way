@@ -5,6 +5,7 @@ module comparator_selector(
     input logic valid_in [0:3],
     input logic dirty_in [0:3],
     output logic cache_hit,
+    output logic [1:0] matched_way,
     output logic [511:0] hit_data
 );
 
@@ -25,19 +26,25 @@ assign cache_hit = way_hit1 | way_hit2 | way_hit3 | way_hit4 ;
 
 always_comb begin
     if(way_hit1) begin
-        hit_data <= in_data[0];
+        hit_data = in_data[0];
+        matched_way = 2'b00;
     end
     else if(way_hit2) begin
-        hit_data <= in_data[1];
+        hit_data = in_data[1];
+        matched_way = 2'b01;
     end
     else if(way_hit3) begin
-        hit_data <= in_data[2];
+        hit_data = in_data[2];
+        matched_way = 2'b10;
     end
     else if(way_hit4) begin
-        hit_data <= in_data[3];
+        hit_data = in_data[3];
+        matched_way = 2'b11;
     end
     else begin
-        hit_data <= 'b0;
+        hit_data = 'b0;
+        matched_way = 2'b00;
+
     end
 end
 
