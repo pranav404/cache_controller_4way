@@ -136,7 +136,6 @@ localparam ERROR = 3'b111; //dummy state
 logic internal_stall;
 logic external_stall;
 
-assign external_stall = cpu_stall_cache | mem_stall_cache;
 
 
 
@@ -149,25 +148,28 @@ logic read_miss_dirty [0:3];
 logic [1:0] read_miss_victim;
 logic [511:0] read_miss_data[0:3];
 logic [511:0] read_miss_mem_data;
+logic read_miss_stall;
 
 //signals for write_fsm
-logic [511:0] cache_write_data;
-logic [511:0] mem_write_cache_data;
-logic [31:0] cache_write_address;
-logic [19:0] write_miss_victim_tags[0:3];
-logic [511:0] write_miss_victim_data[0:3];
-logic write_miss_victim_valids[0:3];
-logic write_miss_victim_dirty[0:3];
-logic [1:0] write_miss_victim_way;
-logic [1:0] matched_way;
-logic [63:0] cpu_write_byte_sel;
-logic write_miss_stall;
+logic [511:0] cache_write_data; //register for storing data from the write request
+logic [511:0] mem_write_cache_data; //register for storing data from the memory on a write miss
+logic [31:0] cache_write_address; // register for storing write request address
+logic [19:0] write_miss_victim_tags[0:3]; //register for storing potential victim tags on a write miss
+logic [511:0] write_miss_victim_data[0:3]; // register for storing potential victim data on a write miss
+logic write_miss_victim_valids[0:3]; // potential victim valid states
+logic write_miss_victim_dirty[0:3]; // potential victim dirty
+logic [1:0] set_to_update; // matched way on a write hit
+logic [63:0] cpu_write_byte_sel; //byte select signal from the cpu on a cache write
+logic write_miss_stall; //signal for write miss stall
 
-always@(posedge clk or negedge rst_n) begin
+always@(posedge clk or negedge rst_n) begin : cache_read_control
     
     if(!rst_n) begin
         
         read_fsm <= IDLE_COMPARE;
+    end
+    else if(external_stall) begin
+        read_fsm <= read_fsm;
     end
     else begin
         
@@ -182,14 +184,18 @@ always@(posedge clk or negedge rst_n) begin
                     read_miss_dirty <= tag_dirty_out;
                     read_miss_valids <= tag_valid_out;
                     read_fsm <= MISS1;
+                    read_miss_stall <= 1'b1;
+
 
                 end
                 else begin
                     read_fsm <= IDLE_COMPARE;
+                    read_miss_stall <= 1'b0;
                 end
             end
             else begin
                 read_fsm <= IDLE_COMPARE;
+                read_miss_stall <= 1'b0;
             end
         end
         MISS1: begin
@@ -228,6 +234,7 @@ always@(posedge clk or negedge rst_n) begin
                 mem_re <= 1'b0;
                 read_miss_mem_data <= mem_data_read;
                 read_fsm <= WRITE_CACHE;
+                read_miss_stall <= 1'b0; // read_miss_has been handle
             end
             else begin
                 read_fsm <= MEM_ACC;
@@ -235,7 +242,7 @@ always@(posedge clk or negedge rst_n) begin
         end
         WRITE_CACHE: begin
             read_fsm <= IDLE_COMPARE;
-
+            
 
         end
         default: begin
@@ -248,11 +255,14 @@ end
 
 
 //always combinational blocks to control tag array
-always_comb begin : tag_array_control
-    if(read_fsm == IDLE_COMPARE && re) begin
+always_comb begin : tag_array_read_control
+    if(external_stall) begin
+        tag_re = 1'b0;
+        tag_r_index = 'b0;
+    end
+    else if(read_fsm == IDLE_COMPARE && re) begin
         tag_re = 1'b1;
         tag_r_index = cpu_addr_read[11:6];
-
     end
     else if(write_fsm == TAG_MATCH && we) begin
         tag_re = 1'b1;
@@ -264,12 +274,71 @@ always_comb begin : tag_array_control
     end
 end
 
+//control for tag array writes
+always_comb begin : tag_array_write_control
+    if(external_stall) begin
+        tag_we = 1'b0;
+        tag_w_index = 'b0;
+        tag_way_sel = 'b0;
+        tag_din = 'b0;
+        tag_valid = 1'b0;
+        tag_dirty = 1'b0;
+    end
+    else if(read_fsm == WRITE_CACHE) begin
+        tag_we = 1'b1;
+        tag_w_index = read_miss_address[11:6];
+        tag_way_sel = read_miss_victim;
+        tag_din = read_miss_address[31:12];
+        tag_valid = 1'b1;
+        tag_dirty = 1'b0;
+    end
+    else if(write_fsm == WRITE_CACHE && !write_miss_stall) begin
+        tag_we = 1'b1;
+        tag_w_index = cache_write_address[11:6];
+        tag_way_sel = set_to_update;
+        tag_din = cache_write_address[31:12];
+        tag_valid = 1'b1;
+        tag_dirty = 1'b1;
+    end
+    else begin
+        tag_we = 1'b0;
+        tag_w_index = 'b0;
+        tag_way_sel = 'b0;
+        tag_din = 'b0;
+        tag_valid = 1'b0;
+        tag_dirty = 1'b0;
+    end
+end
 
-//always block for data array control
-always_comb begin : Data_array
-    if(read_fsm == IDLE_COMPARE && re) begin
+
+//control block for data_array_read
+always_comb begin : data_array_read_control
+    if(external_stall) begin
+        data_re = 1'b0;
+        data_r_index = 'b0;
+    end
+    else if(read_fsm == IDLE_COMPARE && re) begin
         data_re = 1'b1;
         data_r_index = cpu_addr_read[11:6];
+    end
+    else if(write_fsm == TAG_MATCH && re) begin
+        data_re = 1'b1;
+        data_r_index = cpu_addr_write[11:6];
+    end
+    else begin
+        data_re = 1'b0;
+        data_r_index = 'b0;
+    end
+end
+
+//control for data array writes
+always_comb begin : data_array_write_control
+    if(external_stall) begin
+        data_we = 1'b0;
+        data_way_sel = 'b0;
+        data_w_index = 'b0;
+        byte_sel = 'b0;
+        din_data = 'b0;
     end
     else if(read_fsm == WRITE_CACHE) begin
         data_we = 1'b1;
@@ -277,11 +346,10 @@ always_comb begin : Data_array
         data_w_index = read_miss_address[11:6];
         byte_sel = 'b1;
         din_data = read_miss_mem_data;
-        cpu_data_read = read_miss_mem_data;
     end
     else if(write_fsm == WRITE_CACHE) begin
         data_we = 1'b1;
-        data_way_sel = matched_way;
+        data_way_sel = set_to_update;
         data_w_index = cache_write_address[11:6];
         if(write_miss_stall) begin
             byte_sel = 'b1; 
@@ -295,18 +363,35 @@ always_comb begin : Data_array
     else begin
         data_we = 1'b0;
         data_way_sel = 'b0;
-        data_w_index = 1'b0;
+        data_w_index = 'b0;
         byte_sel = 'b0;
         din_data = 'b0;
-        data_re = 1'b0;
-        data_r_index = 'b0;
     end
 end
 
 
 //always combinational block for comparator control
 always_comb begin : comparator_control
-    if(read_fsm == IDLE_COMPARE && re) begin
+    if(external_stall) begin
+        comp_cmp_tag = 'b0;
+        comp_in_tag[0] = 'b0;
+        comp_in_tag[1] = 'b0;
+        comp_in_tag[2] = 'b0;
+        comp_in_tag[3] = 'b0;
+        comp_dirty_in[0] = 'b0;
+        comp_dirty_in[1] = 'b0;
+        comp_dirty_in[2] = 'b0;
+        comp_dirty_in[3] = 'b0;
+        comp_valid_in[0] = 'b0;
+        comp_valid_in[1] = 'b0;
+        comp_valid_in[2] = 'b0;
+        comp_valid_in[3] = 'b0;
+        comp_data_in[0] = 'b0;
+        comp_data_in[1] = 'b0;
+        comp_data_in[2] = 'b0;
+        comp_data_in[3] = 'b0;
+    end
+    else if(read_fsm == IDLE_COMPARE && re) begin
         comp_cmp_tag = cpu_addr_read[31:12];
         comp_in_tag = tag_out;
         comp_valid_in = tag_valid_out;
@@ -334,10 +419,10 @@ always_comb begin : comparator_control
         comp_dirty_in[1] = 'b0;
         comp_dirty_in[2] = 'b0;
         comp_dirty_in[3] = 'b0;
-        comp_valid_in[0] = 'b0;
-        comp_valid_in[1] = 'b0;
-        comp_valid_in[2] = 'b0;
-        comp_valid_in[3] = 'b0;
+        comp_valid_in[0] = 'b1;
+        comp_valid_in[1] = 'b1;
+        comp_valid_in[2] = 'b1;
+        comp_valid_in[3] = 'b1;
         comp_data_in[0] = 'b0;
         comp_data_in[1] = 'b0;
         comp_data_in[2] = 'b0;
@@ -349,8 +434,11 @@ end
 
 //always combinational block for plru control
 
-always_comb begin : plru_control
-    if(read_fsm == MISS1) begin
+always_comb begin : plru_victim_monitor
+    if(external_stall) begin
+        plru_v_index = 'b0;
+    end
+    else if(read_fsm == MISS1) begin
         plru_v_index = read_miss_address[11:6];
     end
     else if(write_fsm == MISS1) begin
@@ -362,13 +450,51 @@ always_comb begin : plru_control
 end
 
 
+//combinational control for plru table updates
+always_comb begin : plru_victim_update
+    if(external_stall) begin
+        plru_we = 1'b0;
+        plru_u_index = 'b0;
+        plru_u_way = 'b0;
+    end
+    else if(read_fsm == IDLE_COMPARE && re && cache_hit) begin
+        plru_we = 1'b1;
+        plru_u_index = cpu_addr_read[11:6];
+        plru_u_way = comp_matched_way;
+    end
+    else if(write_fsm == TAG_MATCH && we && cache_hit) begin
+        plru_we = 1'b1;
+        plru_u_index = cpu_addr_write[11:6];
+        plru_u_way = comp_matched_way;
+    end
+    else if(read_fsm == WRITE_CACHE) begin
+        plru_we = 1'b1;
+        plru_u_index = read_miss_address[11:6];
+        plru_u_way = read_miss_victim;
+    end
+    else if(write_fsm == WRITE_CACHE) begin
+        plru_we = 1'b1;
+        plru_u_index = cache_write_address[11:6];
+        plru_u_way = set_to_update;
+    end
+    else begin
+        plru_we = 1'b0;
+        plru_u_index = 'b0;
+        plru_u_way = 'b0;
+    end
+end
+
+
 
 //sequential write fsm logic control
 
-always_ff @(posedge clk or negedge rst_n) begin
+always_ff @(posedge clk or negedge rst_n) begin : cache_write_control
     
     if(!rst_n) begin
         write_fsm <= TAG_MATCH;
+    end
+    else if(external_stall) begin
+        write_fsm <= write_fsm;
     end
     else begin
         case(write_fsm)
@@ -379,7 +505,7 @@ always_ff @(posedge clk or negedge rst_n) begin
                 cpu_write_byte_sel <= write_byte_sel;
                 if(cache_hit) begin
                     write_fsm <= WRITE_CACHE;
-                    matched_way <= comp_matched_way;
+                    set_to_update <= comp_matched_way;
                     write_miss_stall <= 1'b0;
                 end
                 else begin
@@ -406,11 +532,11 @@ always_ff @(posedge clk or negedge rst_n) begin
             
         end
         MISS1: begin
-            write_miss_victim_way <= plru_v_way;
+            set_to_update <= plru_v_way;
             write_fsm <= MISS2;
         end
         MISS2: begin
-            if(write_miss_victim_dirty[write_miss_victim_way] && write_miss_victim_valids[write_miss_victim_way]) begin
+            if(write_miss_victim_dirty[set_to_update] && write_miss_victim_valids[set_to_update]) begin
                 write_fsm <= WRITE_BACK;
             end
             else begin
@@ -420,8 +546,8 @@ always_ff @(posedge clk or negedge rst_n) begin
         WRITE_BACK: begin
             if(!mem_we) begin
                 mem_we <= 1'b1;
-                mem_addr_write <= {write_miss_victim_tags[write_miss_victim_way],cache_write_address[11:6],6'b0};
-                mem_data_write <= write_miss_victim_data[write_miss_victim_way];
+                mem_addr_write <= {write_miss_victim_tags[set_to_update],cache_write_address[11:6],6'b0};
+                mem_data_write <= write_miss_victim_data[set_to_update];
                 write_fsm <= WRITE_BACK;
             end
             else if(mem_ack) begin
@@ -449,25 +575,13 @@ always_ff @(posedge clk or negedge rst_n) begin
 
 end
 
+assign external_stall = cpu_stall_cache | mem_stall_cache;
+
+assign cpu_data_read = (read_fsm == IDLE_COMPARE && re && cache_hit) ? comp_hit_data : 'b0;
 
 
+assign cache_stall_cpu = write_miss_stall | read_miss_stall | (!cache_hit) | mem_stall_cache;
 
-
-
-
-                    
-
-                    
-                
-
-
-
-
-
-
-
-
-
-
+assign cache_stall_mem = cpu_stall_cache;
 
 endmodule

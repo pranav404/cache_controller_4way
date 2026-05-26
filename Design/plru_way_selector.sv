@@ -1,10 +1,10 @@
 module plru_way_selector(
-    input logic clk;
+    input logic clk,
     input logic plru_we,
-    input logic [5:0] v_index;
-    input logic [5:0] u_index;
-    input logic [1:0] u_way;
-    output logic [1:0] v_way;
+    input logic [5:0] v_index,
+    input logic [5:0] u_index,
+    input logic [1:0] u_way,
+    output logic [1:0] v_way
 
 );
 
