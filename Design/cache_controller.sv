@@ -150,6 +150,7 @@ logic [511:0] read_miss_data[0:3];
 logic [511:0] read_miss_mem_data;
 logic read_miss_stall;
 
+
 //signals for write_fsm
 logic [511:0] cache_write_data; //register for storing data from the write request
 logic [511:0] mem_write_cache_data; //register for storing data from the memory on a write miss
@@ -213,37 +214,25 @@ always@(posedge clk or negedge rst_n) begin : cache_read_control
             end
         end
         WRITE_BACK: begin
-            if(!mem_we) begin
-                mem_we <= 1'b1;
-                mem_addr_write <= {read_miss_tags[read_miss_victim],read_miss_address[11:6],6'b0};
-                mem_data_write <= read_miss_data[read_miss_victim];
-                read_fsm <= WRITE_BACK;
-            end
-            else if(mem_ack) begin
-                mem_we <= 1'b0;
+            if(mem_ack) begin
                 read_fsm <= MEM_ACC;
+            end
+            else begin
+                read_fsm <= WRITE_BACK;
             end
         end
         MEM_ACC: begin
-            if(!mem_re) begin
-                mem_re <= 1'b1;
-                mem_addr_read <= read_miss_address;
-                read_fsm <= MEM_ACC;
-            end
-            else if (mem_ack) begin
-                mem_re <= 1'b0;
-                read_miss_mem_data <= mem_data_read;
+            if(mem_ack) begin
                 read_fsm <= WRITE_CACHE;
-                read_miss_stall <= 1'b0; // read_miss_has been handle
+                read_miss_mem_data <= mem_data_read;
+                read_miss_stall <= 1'b0;
             end
             else begin
                 read_fsm <= MEM_ACC;
             end
         end
         WRITE_CACHE: begin
-            read_fsm <= IDLE_COMPARE;
-            
-
+            read_fsm <= IDLE_COMPARE;           
         end
         default: begin
             
@@ -253,6 +242,42 @@ always@(posedge clk or negedge rst_n) begin : cache_read_control
     end
 end
 
+//combinational control for mem data write port
+
+always_comb begin : mem_data_write_control
+    if(read_fsm == WRITE_BACK) begin
+        mem_we = 1'b1;
+        mem_addr_write = {read_miss_tags[read_miss_victim],read_miss_address[11:6],6'b0};
+        mem_data_write = read_miss_data[read_miss_victim];
+    end
+    else if(write_fsm == WRITE_BACK) begin
+        mem_we = 1'b1;
+        mem_addr_write = {write_miss_victim_tags[set_to_update],cache_write_address[11:6],6'b0};
+        mem_data_write = write_miss_victim_data[set_to_update];
+    end
+    else begin
+        mem_we = 1'b0;
+        mem_addr_write = 'b0;
+        mem_data_write = 'b0;
+    end
+end
+
+
+//control for mem data read control
+always_comb begin : mem_data_read_control
+    if(read_fsm == MEM_ACC) begin
+        mem_re = 1'b1;
+        mem_addr_read = read_miss_address;
+    end
+    else if(write_fsm == MEM_ACC) begin
+        mem_re = 1'b1;
+        mem_addr_read = cache_write_address;
+    end
+    else begin
+        mem_re = 1'b0;
+        mem_addr_read = 'b0;
+    end
+end
 
 //always combinational blocks to control tag array
 always_comb begin : tag_array_read_control
@@ -544,27 +569,20 @@ always_ff @(posedge clk or negedge rst_n) begin : cache_write_control
             end
         end
         WRITE_BACK: begin
-            if(!mem_we) begin
-                mem_we <= 1'b1;
-                mem_addr_write <= {write_miss_victim_tags[set_to_update],cache_write_address[11:6],6'b0};
-                mem_data_write <= write_miss_victim_data[set_to_update];
-                write_fsm <= WRITE_BACK;
-            end
-            else if(mem_ack) begin
-                mem_we <= 1'b0;
+            if(mem_ack) begin
                 write_fsm <= MEM_ACC;
+            end
+            else begin
+                write_fsm <= WRITE_BACK;
             end
         end
         MEM_ACC: begin
-            if(!mem_re) begin
-                mem_re <= 1'b1;
-                mem_addr_read <= cache_write_address;
-                write_fsm <= MEM_ACC;
-            end
-            else if(mem_ack) begin
-                mem_re <= 1'b0;
-                write_fsm <= WRITE_CACHE;
+            if(mem_ack) begin
                 mem_write_cache_data <= mem_data_read;
+                write_fsm <= WRITE_CACHE;
+            end
+            else begin
+                write_fsm <= MEM_ACC;
             end
         end
         default: begin
