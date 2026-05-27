@@ -107,13 +107,7 @@ Both the read and write datapaths use independent FSMs with the following states
 
 ## Simulation
 
-Tested with [your simulator, e.g., ModelSim / VCS / Verilator]:
-
-```bash
-vlog *.sv
-vsim cache_controller_tb
-```
 
 ## License
 
-[Your license here, e.g., MIT]
+
