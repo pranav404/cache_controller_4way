@@ -1,5 +1,6 @@
 module tag_array(
 input logic clk,
+input logic rst_n,
 input logic [5:0] w_index,
 input logic [5:0] r_index,
 input logic we,
@@ -25,9 +26,19 @@ logic dirty;
 
 tag_mem_array tag_mem_banks [0:63][0:3];
 
+
 //Sequential Write to tag_bank
-always_ff @(posedge clk) begin
-	if(we) begin
+always_ff @(posedge clk or negedge rst_n) begin
+	//asynchronous reset for tag array
+	if(!rst_n) begin
+		for(int j = 0; j < 64; j = j+1) begin
+			tag_mem_banks[j][0] = 'b0;
+			tag_mem_banks[j][1] = 'b0;
+			tag_mem_banks[j][2] = 'b0;
+			tag_mem_banks[j][3] = 'b0;
+		end
+	end
+	else if(we) begin
 		tag_mem_banks[w_index][way_sel] <= {din_tag,din_valid,din_dirty};
 	end
 end

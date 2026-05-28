@@ -1,5 +1,6 @@
 module plru_way_selector(
     input logic clk,
+    input logic rst_n,
     input logic plru_we,
     input logic [5:0] v_index,
     input logic [5:0] u_index,
@@ -9,12 +10,13 @@ module plru_way_selector(
 );
 
 logic [2:0] plru_tree [0:63];
+integer i;
 
 
 //combinational logic to find the victim way
 always_comb begin
-    if(plru_tree[v_index][0]) begin
-        if(plru_tree[v_index][2])begin
+    if(plru_tree[v_index][2]) begin
+        if(plru_tree[v_index][0])begin
             v_way = 2'b11;
         end
         else begin
@@ -33,9 +35,15 @@ end
 
 
 
-always@(posedge clk) begin
+always@(posedge clk or negedge rst_n) begin
 
-    if(plru_we) begin
+    //asynchronous reset for plru
+    if(!rst_n) begin
+        for(i = 0;i < 64; i = i+1) begin
+            plru_tree[i] = 'b0;
+        end
+    end
+    else if(plru_we) begin
     case(u_way)
         2'b00: begin
             plru_tree[u_index] <= {1'b1,1'b1,plru_tree[u_index][0]};
