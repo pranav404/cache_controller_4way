@@ -107,7 +107,8 @@ Both the read and write datapaths use independent FSMs with the following states
 
 ## Simulation
 <img width="1920" height="1140" alt="Screenshot 2026-05-28 015902" src="https://github.com/user-attachments/assets/e37c22f8-c407-4ab7-b306-933eea9c1421" />
-<img width="940" height="492" alt="wavedrom" src="https://github.com/user-attachments/assets/3db6b4ed-c2e3-489c-9f16-0d10b190c2fe" />
+<img width="4320" height="666" alt="wavedrom" src="https://github.com/user-attachments/assets/6fcacaae-7eaf-450f-9b4f-7b6bfa5eb543" />
+
 
 
 
