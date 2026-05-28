@@ -106,6 +106,9 @@ Both the read and write datapaths use independent FSMs with the following states
 ```
 
 ## Simulation
+<img width="1920" height="1140" alt="Screenshot 2026-05-28 015902" src="https://github.com/user-attachments/assets/e37c22f8-c407-4ab7-b306-933eea9c1421" />
+
+
 
 
 ## License
