@@ -6,6 +6,9 @@ package cache_uvm_pkg;
   import uvm_pkg::*;
   `include "uvm_macros.svh"
 
+  `uvm_analysis_imp_decl(_cpu)
+  `uvm_analysis_imp_decl(_mem)
+
   // Transaction items (no dependencies)
   `include "cache_seq_item.sv"
   `include "cache_mem_seq_item.sv"

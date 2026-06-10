@@ -89,7 +89,7 @@ module cache_controller_tb;
                 mem_ack <= 1'b1;
                 if (mem_re) begin
                     // Provide predictable dummy data based on the requested address
-                    $display(mem_addr_read);
+                    //$display(mem_addr_read);
                     mem_data_read <= {16{mem_addr_read}}; 
                 end
             end else begin
@@ -188,9 +188,17 @@ module cache_controller_tb;
         // Test Scenario 4: Read Hit after Write to verify dirty data is preserved
         cpu_read(32'hA0A0A040);
 
+        
+
         // Test Scenario 5: Conflict Miss forcing Eviction / Writeback
         // Accessing the same index (6'b000001) but with a different Tag to conflict (if way array fills up or matches replacement policy)
         cpu_read(32'hB0B0B040);
+
+
+        //Test scenario 6: Triggering a write miss
+        cpu_write(32'hA1A1A1A1,512'hAAAABBBB_CCCCDDDD,64'hFF);
+
+        cpu_read(32'hA1A1A1A1);
 
         // Wrap up simulation
         #(CLK_PERIOD * 10);

@@ -3,17 +3,6 @@
 // Transaction item for the 4-way set-associative cache UVM TB
 // ============================================================
 class cache_seq_item extends uvm_sequence_item;
-  `uvm_object_utils_begin(cache_seq_item)
-    `uvm_field_int(re,              UVM_ALL_ON)
-    `uvm_field_int(we,              UVM_ALL_ON)
-    `uvm_field_int(cpu_addr_read,   UVM_ALL_ON)
-    `uvm_field_int(cpu_addr_write,  UVM_ALL_ON)
-    `uvm_field_int(cpu_data_write,  UVM_ALL_ON)
-    `uvm_field_int(write_byte_sel,  UVM_ALL_ON)
-    // Response fields (populated by monitor)
-    `uvm_field_int(cpu_data_read,   UVM_ALL_ON)
-    `uvm_field_int(cache_stall_cpu, UVM_ALL_ON)
-  `uvm_object_utils_end
 
   // --------------- Stimulus Fields ---------------
   rand logic        re;               // read enable
@@ -27,6 +16,20 @@ class cache_seq_item extends uvm_sequence_item;
   logic [511:0] cpu_data_read;        // data returned on a read hit
   logic         cache_stall_cpu;      // stall signal back to CPU
 
+
+  `uvm_object_utils_begin(cache_seq_item)
+    `uvm_field_int(re,              UVM_ALL_ON)
+    `uvm_field_int(we,              UVM_ALL_ON)
+    `uvm_field_int(cpu_addr_read,   UVM_ALL_ON)
+    `uvm_field_int(cpu_addr_write,  UVM_ALL_ON)
+    `uvm_field_int(cpu_data_write,  UVM_ALL_ON)
+    `uvm_field_int(write_byte_sel,  UVM_ALL_ON)
+    // Response fields (populated by monitor)
+    `uvm_field_int(cpu_data_read,   UVM_ALL_ON)
+    `uvm_field_int(cache_stall_cpu, UVM_ALL_ON)
+  `uvm_object_utils_end
+
+  
   // --------------- Constraints ---------------
 
   // Only one of re/we active at a time (no simultaneous R+W for now)

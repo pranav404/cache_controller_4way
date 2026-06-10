@@ -1,8 +1,10 @@
+
 // ============================================================
 // cache_if.sv
 // Virtual interface for the 4-way cache controller
 // Clocking blocks enforce proper setup/hold relative to clk
 // ============================================================
+`timescale 1ns/1ps
 interface cache_if (input logic clk);
 
   // ----------- CPU-side signals -----------
@@ -37,6 +39,7 @@ interface cache_if (input logic clk);
   // -------------------------------------------------------
   clocking cpu_drv_cb @(posedge clk);
     default input #1ns output #1ns;
+    output rst_n;
     output re, we;
     output cpu_addr_read, cpu_addr_write;
     output cpu_data_write, write_byte_sel;
@@ -50,6 +53,7 @@ interface cache_if (input logic clk);
   // -------------------------------------------------------
   clocking cpu_mon_cb @(posedge clk);
     default input #1ns;
+    input rst_n;
     input re, we;
     input cpu_addr_read, cpu_addr_write;
     input cpu_data_write, write_byte_sel;
@@ -63,6 +67,7 @@ interface cache_if (input logic clk);
   // -------------------------------------------------------
   clocking mem_drv_cb @(posedge clk);
     default input #1ns output #1ns;
+    output rst_n;
     output mem_ack;
     output mem_data_read;
     output mem_stall_cache;
@@ -76,6 +81,7 @@ interface cache_if (input logic clk);
   // -------------------------------------------------------
   clocking mem_mon_cb @(posedge clk);
     default input #1ns;
+    input rst_n;
     input mem_re, mem_we;
     input mem_addr_read, mem_addr_write;
     input mem_data_write;
@@ -85,7 +91,7 @@ interface cache_if (input logic clk);
   // -------------------------------------------------------
   // Modports (optional but good practice)
   // -------------------------------------------------------
-  modport cpu_drv_mp  (clocking cpu_drv_cb, input clk, output rst_n);
+  modport cpu_drv_mp  (clocking cpu_drv_cb, input clk);
   modport cpu_mon_mp  (clocking cpu_mon_cb, input clk);
   modport mem_drv_mp  (clocking mem_drv_cb, input clk);
   modport mem_mon_mp  (clocking mem_mon_cb, input clk);
