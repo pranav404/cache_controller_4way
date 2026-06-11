@@ -207,14 +207,14 @@ class cache_coverage extends uvm_subscriber #(cache_seq_item);
   // -------------------------------------------------------
   function void report_phase(uvm_phase phase);
     `uvm_info("COV_REPORT", $sformatf(
-      "\n============ COVERAGE SUMMARY ============\n"|
-      "  CPU Ops Coverage     : %0.1f%%\n" |
-      "  Address Coverage     : %0.1f%%\n" |
-      "  Byte Sel Coverage    : %0.1f%%\n" |
-      "  Memory Ops Coverage  : %0.1f%%\n" |
-      "  PLRU Victim Coverage : %0.1f%%\n" |
-      "  Scenario Coverage    : %0.1f%%\n" |
-      "==========================================",
+      {"\n============ COVERAGE SUMMARY ============\n",
+      "  CPU Ops Coverage     : %0.1f%%\n",
+      "  Address Coverage     : %0.1f%%\n",
+      "  Byte Sel Coverage    : %0.1f%%\n",
+      "  Memory Ops Coverage  : %0.1f%%\n",
+      "  PLRU Victim Coverage : %0.1f%%\n",
+      "  Scenario Coverage    : %0.1f%%\n",
+      "=========================================="},
       cg_cpu_ops.get_coverage(),
       cg_address.get_coverage(),
       cg_byte_sel.get_coverage(),

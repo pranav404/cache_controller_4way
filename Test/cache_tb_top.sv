@@ -80,7 +80,7 @@ module cache_tb_top;
     dut_if.mem_stall_cache = 1'b0;
 
     // Hold reset for 10 clock cycles
-    repeat(10) @(posedge clk);
+    //repeat(10) @(posedge clk);
     dut_if.rst_n = 1'b1;
     `uvm_info("TB_TOP", "Reset deasserted — starting UVM test", UVM_LOW)
 

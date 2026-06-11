@@ -402,17 +402,15 @@ class cache_scoreboard extends uvm_scoreboard;
   // -------------------------------------------------------
 
   function void report_phase(uvm_phase phase);
-        `uvm_info("SCB_REPORT", $sformatf(
-            "\n================ SCOREBOARD SUMMARY ================\n" |
-            "  Read Hits    : %0d\n"                                    |
-            "  Read Misses  : %0d\n"                                    |
-            "  Write Hits   : %0d\n"                                    |
-            "  Write Misses : %0d\n"                                    |
-            "  Write-Backs  : %0d\n"                                    |
-            "  ERRORS       : %0d\n"                                    |
-            "====================================================\n",
-            read_hits, read_misses, write_hits, write_misses, write_backs, errors
-        ), UVM_NONE) // <-- Closed $sformatf AND closed `uvm_info macro cleanly here!
+        `uvm_info("SCB_REPORT", $sformatf({
+            "\n================ SCOREBOARD SUMMARY ================\n",
+            "  Read Hits    : %0d\n",
+            "  Read Misses  : %0d\n",
+            "  Write Hits   : %0d\n",
+            "  Write Misses : %0d\n",
+            "  Write-Backs  : %0d\n",
+            "  ERRORS       : %0d\n",
+            "====================================================\n"},read_hits, read_misses, write_hits, write_misses, write_backs, errors), UVM_NONE)
     if (errors == 0)
       `uvm_info("SCB_REPORT",  "*** ALL CHECKS PASSED ***", UVM_NONE)
     else
