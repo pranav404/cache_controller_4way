@@ -1,0 +1,21 @@
+[options]
+# Proof mode: bmc = Bounded Model Checking
+# Searches all input sequences up to 'depth' clock steps
+mode prove
+
+# How many steps to unroll. The full-flag bug manifests in a few pushes.
+depth 17
+
+[engines]
+# smtbmc routes through an SMT solver. boolector is the fast default for RTL.
+smtbmc z3
+
+[script]
+# Read in formal mode — activates ifdef FORMAL blocks in the design
+read -formal -sv comparator.sv
+# Elaborate and set the top-level module
+prep -top comparator_selector
+
+[files]
+# Files copied into SymbiYosys's working directory before the run
+comparator.sv
